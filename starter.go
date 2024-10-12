@@ -1,7 +1,6 @@
 package mysql_starter
 
 import (
-	"github.com/kordar/gocfg"
 	goframeworkgormmysql "github.com/kordar/goframework-gorm-mysql"
 	logger "github.com/kordar/gologger"
 	"github.com/spf13/cast"
@@ -16,32 +15,60 @@ func CloseMysqlInstance(db string) {
 }
 
 type MysqlModule struct {
-	GroupName string
+	name     string
+	load     func(moduleName string, itemId string, item map[string]string)
+	logLevel string
+}
+
+func NewMysqlModule(name string, load func(moduleName string, itemId string, item map[string]string), logLevel string) *MysqlModule {
+	return &MysqlModule{name, load, logLevel}
 }
 
 func (m MysqlModule) Name() string {
-	return "mysql_starter"
+	return m.name
+}
+
+func (m MysqlModule) _load(id string, cfg map[string]string) {
+	if id == "" {
+		logger.Fatalf("[%s] the attribute id cannot be empty.", m.Name())
+		return
+	}
+
+	if cfg["dsn"] != "" {
+		if err := goframeworkgormmysql.AddMysqlInstanceWithDsn(id, cfg["dsn"]); err != nil {
+			logger.Fatalf("[%s] initializing mysql: %v", m.Name(), err)
+			return
+		}
+	} else {
+		if err := goframeworkgormmysql.AddMysqlInstance(id, cfg); err != nil {
+			logger.Fatalf("[%s] initializing mysql: %v", m.Name(), err)
+			return
+		}
+	}
+
+	if m.load != nil {
+		m.load(m.name, id, cfg)
+		logger.Debugf("[%s] triggering custom loader completion", m.Name())
+	}
+
+	logger.Infof("[%s] loading module '%s' successfully", m.Name(), id)
 }
 
 func (m MysqlModule) Load(value interface{}) {
 
-	logLevel := gocfg.GetSystemValue("gorm_log_level", m.GroupName)
-	if logLevel != "" {
-		goframeworkgormmysql.SetDbLogLevel(logLevel)
+	if m.logLevel != "" {
+		goframeworkgormmysql.SetDbLogLevel(m.logLevel)
 	}
 
 	items := cast.ToStringMap(value)
+	if items["id"] != nil {
+		id := cast.ToString(items["id"])
+		m._load(id, cast.ToStringMapString(value))
+		return
+	}
+
 	for key, item := range items {
-		section := cast.ToStringMapString(item)
-		if section["dsn"] != "" {
-			if err := goframeworkgormmysql.AddMysqlInstanceWithDsn(key, section["dsn"]); err != nil {
-				logger.Fatalf("[mysql_starter] 初始化mysql异常，err=%v", err)
-			}
-		} else {
-			if err := goframeworkgormmysql.AddMysqlInstance(key, section); err != nil {
-				logger.Fatalf("[mysql_starter] 初始化mysql异常，err=%v", err)
-			}
-		}
+		m._load(key, cast.ToStringMapString(item))
 	}
 }
 
