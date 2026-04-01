@@ -2,8 +2,9 @@ package mysql_starter
 
 import (
 	goframeworkgormmysql "github.com/kordar/goframework-gorm-mysql"
-	logger "github.com/kordar/gologger"
 	"github.com/spf13/cast"
+	"log/slog"
+	"os"
 )
 
 func HasMysqlInstance(db string) bool {
@@ -30,28 +31,31 @@ func (m MysqlModule) Name() string {
 
 func (m MysqlModule) _load(id string, cfg map[string]string) {
 	if id == "" {
-		logger.Fatalf("[%s] the attribute id cannot be empty.", m.Name())
+		slog.Error("attribute id cannot be empty", "module", m.Name())
+		os.Exit(1)
 		return
 	}
 
 	if cfg["dsn"] != "" {
 		if err := goframeworkgormmysql.AddMysqlInstanceWithDsn(id, cfg["dsn"]); err != nil {
-			logger.Fatalf("[%s] initializing mysql: %v", m.Name(), err)
+			slog.Error("initializing mysql with dsn failed", "module", m.Name(), "id", id, "err", err)
+			os.Exit(1)
 			return
 		}
 	} else {
 		if err := goframeworkgormmysql.AddMysqlInstance(id, cfg); err != nil {
-			logger.Fatalf("[%s] initializing mysql: %v", m.Name(), err)
+			slog.Error("initializing mysql failed", "module", m.Name(), "id", id, "err", err)
+			os.Exit(1)
 			return
 		}
 	}
 
 	if m.load != nil {
 		m.load(m.name, id, cfg)
-		logger.Debugf("[%s] triggering custom loader completion", m.Name())
+		slog.Debug("triggering custom loader completion", "module", m.Name())
 	}
 
-	logger.Infof("[%s] loading module '%s' successfully", m.Name(), id)
+	slog.Info("loading module successfully", "module", m.Name(), "id", id)
 }
 
 func (m MysqlModule) Load(value interface{}) {
